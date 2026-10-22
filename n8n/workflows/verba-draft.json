@@ -1,0 +1,247 @@
+{
+  "id": "HMws5BgoL5uHEWwS",
+  "name": "Verba draft",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "verba/draft",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "verba-draft"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const raw = $input.first().json;\r\nconst body = raw.body && typeof raw.body === 'object' ? raw.body : raw;\r\nconst task = String(body.task ?? '').trim();\r\nconst language = String(body.language ?? 'en').trim() || 'en';\r\nconst brief = String(body.brief ?? '');\r\nconst context = String(body.context ?? '');\r\nconst origin = String(body.origin ?? '').trim();\r\n\r\nconst known = ['commit', 'pr', 'prompt', 'git'];\r\n\r\nfunction fail(status, error) {\r\n  return [{ json: { ok: false, status, error } }];\r\n}\r\n\r\nfunction lengthError(value, max, name) {\r\n  if (value.length > max) {\r\n    return `${name} is longer than ${max} characters`;\r\n  }\r\n  return '';\r\n}\r\n\r\nif (!known.includes(task)) {\r\n  return fail(400, 'Unknown task');\r\n}\r\n\r\nif (task === 'git') {\r\n  const message = brief.trim();\r\n  const messageError = lengthError(message, 4000, 'brief');\r\n  const originError = lengthError(origin, 500, 'origin');\r\n  if (!message) return fail(400, 'Commit message is empty');\r\n  if (message.includes('\\n') || message.includes('\\r')) {\r\n    return fail(400, 'Commit message must be a single line');\r\n  }\r\n  if (!origin) return fail(400, 'Origin URL is empty');\r\n  if (!/^https:\\/\\/github\\.com\\/[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+(?:\\.git)?$/.test(origin)) {\r\n    return fail(400, 'Origin must be an https://github.com/owner/repo.git URL');\r\n  }\r\n  if (messageError) return fail(400, messageError);\r\n  if (originError) return fail(400, originError);\r\n  const draft = [\r\n    'git init',\r\n    'git add .',\r\n    `git commit -m ${JSON.stringify(message)}`,\r\n    'git branch -M main',\r\n    `git remote add origin ${origin}`,\r\n    'git push -u origin main',\r\n  ].join('\\n');\r\n  return [{ json: { ok: true, mode: 'template', status: 200, task, draft, model: 'template' } }];\r\n}\r\n\r\nif (task === 'prompt') {\r\n  if (!brief.trim()) return fail(400, 'Brief is empty');\r\n  const briefError = lengthError(brief, 4000, 'brief');\r\n  const contextError = lengthError(context, 24000, 'context');\r\n  if (briefError) return fail(400, briefError);\r\n  if (contextError) return fail(400, contextError);\r\n  const preamble =\r\n    'Bien colegui, Analiza el proyecto actual y luego, teniendo en cuenta los archivos de design_guidelines.md y architecture_guidelines.md (que están en la carpeta docs pero están agregados al archivo .gitignore y me gustaría que se mantuviera así) además de tener en cuenta las buenas prácticas de angular 22+, los principios SOLID, DRY y KISS y luego realiza lo siguiente:';\r\n  const extra = context.trim() ? `\\n\\n${context.trim()}` : '';\r\n  const draft = `${preamble}\\n\\n${brief.trim()}${extra}`;\r\n  return [{ json: { ok: true, mode: 'template', status: 200, task, draft, model: 'template' } }];\r\n}\r\n\r\nif (!brief.trim() && !context.trim()) return fail(400, 'Brief is empty');\r\nconst briefError = lengthError(brief, 4000, 'brief');\r\nconst contextError = lengthError(context, 24000, 'context');\r\nif (briefError) return fail(400, briefError);\r\nif (contextError) return fail(400, contextError);\r\n\r\nconst summary =\r\n  brief.trim() ||\r\n  context\r\n    .split('\\n')\r\n    .map((line) => line.trim())\r\n    .find(Boolean)\r\n    ?.slice(0, 120) ||\r\n  'Update';\r\nconst notes = context.trim();\r\nconst model = $env.LMSTUDIO_MODEL || 'liquid/lfm2.5-1.2b';\r\n\r\nif (task === 'pr') {\r\n  return [\r\n    {\r\n      json: {\r\n        ok: true,\r\n        mode: 'model',\r\n        status: 200,\r\n        task,\r\n        model,\r\n        system:\r\n          'You write GitHub pull request summaries. Reply with exactly one English paragraph between 150 and 200 characters inclusive. Count characters before you finish. State how the change answers the use case. No title, no bullets, no quotes, no preamble, no second sentence if the first already fills the range.',\r\n        user: notes ? `Use case:\\n${summary}\\n\\nNotes:\\n${notes}` : `Use case:\\n${summary}`,\r\n      },\r\n    },\r\n  ];\r\n}\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ok: true,\r\n      mode: 'model',\r\n      status: 200,\r\n      task,\r\n      model,\r\n      system: `You write one git commit command. Reply with exactly one line in ${language}:\\ngit commit -m \"SUMMARY\"\\nSUMMARY is a concise imperative summary of the change. Do not add other lines or markdown fences.`,\r\n      user: notes ? `Change:\\n${summary}\\n\\nDiff or notes:\\n${notes}` : `Change:\\n${summary}`,\r\n    },\r\n  },\r\n];\r\n"
+      },
+      "id": "22222222-2222-4222-8222-222222222222",
+      "name": "Prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ok-is-false",
+              "leftValue": "={{ $json.ok ? \"yes\" : \"no\" }}",
+              "rightValue": "no",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "33333333-3333-4333-8333-333333333333",
+      "name": "Needs error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "mode-is-template",
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "template",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "55555555-5555-4555-8555-555555555555",
+      "name": "Is template",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        980,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.LMSTUDIO_BASE_URL || \"http://host.docker.internal:1234/v1\").replace(/\\/$/, \"\") + \"/chat/completions\" }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $json.model, temperature: 0.2, messages: [{ role: \"system\", content: $json.system }, { role: \"user\", content: $json.user }] }) }}",
+        "options": {
+          "timeout": "={{ Number($env.LMSTUDIO_TIMEOUT_MS || 120000) }}"
+        }
+      },
+      "id": "77777777-7777-4777-8777-777777777777",
+      "name": "Call model",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1220,
+        420
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const prepared = $('Prepare').first().json;\r\nconst item = $input.first();\r\nconst http = item.json ?? {};\r\nconst failure = item.error?.message || http.error?.message || (typeof http.error === 'string' ? http.error : '');\r\n\r\nif (failure || !http.choices) {\r\n  const text = String(failure || http.error?.message || 'connection failed');\r\n  if (/timeout|ETIMEDOUT|aborted/i.test(text)) {\r\n    return [{ json: { ok: false, status: 504, error: 'The local model timed out' } }];\r\n  }\r\n  if (/model/i.test(text)) {\r\n    return [{ json: { ok: false, status: 503, error: 'The model id is not loaded' } }];\r\n  }\r\n  return [{ json: { ok: false, status: 503, error: 'Local model server is not running' } }];\r\n}\r\n\r\nlet draft = String(http.choices?.[0]?.message?.content ?? '').trim();\r\ndraft = draft.replace(/^```[a-z]*\\n?/i, '').replace(/\\n?```$/, '').trim();\r\n\r\nif (prepared.task === 'commit') {\r\n  const line = draft\r\n    .split('\\n')\r\n    .map((entry) => entry.trim())\r\n    .find((entry) => entry.startsWith('git commit'));\r\n  if (line) draft = line;\r\n}\r\n\r\nif (prepared.task === 'pr') {\r\n  draft = draft.replace(/^[\"']|[\"']$/g, '').replace(/\\s+/g, ' ').trim();\r\n  if (draft.length > 200) {\r\n    const window = draft.slice(0, 200);\r\n    const stop = Math.max(window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '));\r\n    if (stop >= 149) {\r\n      draft = window.slice(0, stop + 1).trim();\r\n    } else {\r\n      const space = window.lastIndexOf(' ');\r\n      draft = `${(space > 120 ? window.slice(0, space) : window).trim()}…`;\r\n    }\r\n  }\r\n}\r\n\r\nif (!draft) {\r\n  return [{ json: { ok: false, status: 502, error: 'The model returned an empty draft' } }];\r\n}\r\n\r\nreturn [{ json: { ok: true, status: 200, task: prepared.task, draft, model: prepared.model } }];\r\n"
+      },
+      "id": "88888888-8888-4888-8888-888888888888",
+      "name": "Format draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.ok ? { task: $json.task, draft: $json.draft, model: $json.model } : { error: $json.error } }}",
+        "options": {
+          "responseCode": "={{ $json.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "http://localhost:4200"
+              }
+            ]
+          }
+        }
+      },
+      "id": "66666666-6666-4666-8666-666666666666",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1700,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare": {
+      "main": [
+        [
+          {
+            "node": "Needs error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs error": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is template": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call model": {
+      "main": [
+        [
+          {
+            "node": "Format draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format draft": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

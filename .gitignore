@@ -1,0 +1,37 @@
+# Secrets. Commit .env.template only.
+.env
+.env.local
+.env.*.local
+!.env.template
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Angular build output
+dist/
+tmp/
+out-tsc/
+.angular/
+coverage/
+.sass-cache/
+
+# Compose data if a bind mount is used instead of a named volume
+.n8n/
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Logs
+*.log
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

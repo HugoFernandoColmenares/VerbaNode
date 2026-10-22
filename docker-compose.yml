@@ -1,0 +1,54 @@
+# VerbaNode orchestration scaffold.
+# n8n is the only Compose service. LM Studio and the Angular dev server run on the host.
+# Workflows and the product UI are not in this file.
+
+name: verbanode
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    env_file:
+      - .env
+    environment:
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL:-http://localhost:5678}
+      N8N_WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      GENERIC_TIMEZONE: ${TZ:-America/Bogota}
+      TZ: ${TZ:-America/Bogota}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env}
+      N8N_SECURE_COOKIE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      # Workstation only. Lets a workflow read LMSTUDIO_* . Do not copy this to a shared host.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      LMSTUDIO_MODEL: ${LMSTUDIO_MODEL:-liquid/lfm2.5-1.2b}
+      LMSTUDIO_TIMEOUT_MS: ${LMSTUDIO_TIMEOUT_MS:-120000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - verba_n8n:/home/node/.n8n
+      - verba_history:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5678/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  verba_n8n:
+  verba_history:
